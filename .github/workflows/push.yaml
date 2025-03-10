@@ -1,0 +1,164 @@
+name: Deploy
+
+on:
+    workflow_dispatch:
+        branches:
+            - master
+            - develop
+            - homolog
+    push:
+        branches:
+            - master
+            - develop
+            - homolog
+        paths-ignore:
+            - '.github/**'
+
+
+concurrency:
+    group: '${{ github.workflow }}-${{ github.ref }}'
+    cancel-in-progress: true
+
+jobs:
+    generate-docker:
+        name: Docker Build
+        runs-on: ["${{ github.event.repository.name }}", fiscal, linux, self-hosted, x64]
+        environment: ${{ github.ref_name }}
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+              name: Checkout
+              with:
+                  ref: ${{ inputs.git_ref }}
+                  fetch-depth: 0
+
+            - name: docker-build
+              uses: orbitspot/actions/.github/actions/docker@v10
+              with:
+                  aws_account_number: ${{ vars.AWS_ACCOUNT_NUMBER }}
+                  aws_role_name: ${{ vars.AWS_ROLE_NAME }}
+                  aws_region: ${{ vars.CLUSTER_REGION }}
+                  image: ${{ github.event.repository.name }}
+                  tag: ${{ github.sha }}
+                  build_args: "--build-arg AWS_ACCESS_KEY=${{ secrets.ACCESS_KEY_CODE_ARTIFACT }} --build-arg AWS_SECRET_ACCESS_KEY=${{ secrets.SECRET_ACCESS_KEY_CODE_ARTIFACT }} --build-arg REACT_APP_URL_ORBIT=${{ vars.REACT_APP_URL_ORBIT }} --build-arg REACT_APP_URL_ADM_PORTAL=${{ vars.REACT_APP_URL_ADM_PORTAL }} --build-arg REACT_APP_ENVIRONMENT=${{ vars.REACT_APP_ENVIRONMENT }} --build-arg REACT_APP_PASS_HASH=${{ vars.REACT_APP_PASS_HASH }} --build-arg PUBLIC_PATH=${{ vars.PUBLIC_PATH }} --build-arg NEXT_PUBLIC_ENVIRONMENT=${{ vars.NEXT_PUBLIC_ENVIRONMENT }} --build-arg NEXT_PUBLIC_URL_API_4TAX=${{ vars.NEXT_PUBLIC_URL_API_4TAX }}"
+                  before_building: |
+                      mv .github/docker/next/Dockerfile Dockerfile
+
+
+    helm-replacement:
+      name: Helm Replacement
+      runs-on: ["${{ github.event.repository.name }}", fiscal, linux, self-hosted, x64]
+      environment: ${{ github.ref_name }}
+      permissions:
+          id-token: write
+          contents: read
+      steps:
+          - uses: actions/checkout@v4
+            name: Checkout
+
+          - name: Configurar Python
+            uses: actions/setup-python@v5
+            with:
+                python-version: '3.x'
+              
+          - name: Checkout script repository
+            uses: actions/checkout@v4
+            with:
+                repository: 'orbitspot/actions'
+                path: code
+      
+          - name: append-data-in-properties
+            run: |
+              echo "${{ vars._PROPERTIES }}" > values.properties
+      
+          - name: replace-data
+            env:
+              PREFIX: .${{ github.event.repository.name }}
+              PROPERTIES_PATH: /opt/actions-runner/_work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/values.properties
+              YAML_PATH: .github/helm/next/values.yaml
+            run: python code/.github/scripts/replace-properties.py
+
+          - name: upload
+            uses: actions/upload-artifact@v4
+            with:
+              name: helm-values
+              path: .github/helm/next/values.yaml
+              retention-days: 1
+
+    create-service-account-role:
+        name: Creating Aws Resources
+        runs-on: ["${{ github.event.repository.name }}", fiscal, linux, self-hosted, x64]
+        environment: ${{ github.ref_name }}
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+          - name: create-role
+            uses: orbitspot/actions/.github/actions/create-role-service-account@v10
+            with:
+                role: "${{ github.event.repository.name }}-${{ vars.ENV }}"
+                cluster_oidc_issuer: ${{ secrets.OIDC_PROVIDER }}
+                namespace: ${{ github.event.repository.name }}
+                service_account_name: "application-permission"
+                aws_account_number: ${{ vars.AWS_ACCOUNT_NUMBER }}
+                aws_role_name: ${{ vars.AWS_ROLE_NAME }}
+                aws_region: ${{ vars.AWS_REGION }}
+                policy: ${{ vars._POLICY_JSON }}
+
+          - name: create-namespace
+            uses: orbitspot/actions/.github/actions/create-namespace-and-service-account@v10
+            with:
+                aws_account_number: ${{ vars.AWS_ACCOUNT_NUMBER }}
+                aws_role_name: ${{ vars.AWS_ROLE_NAME }}
+                aws_region: ${{ vars.CLUSTER_REGION }}
+                cluster_name: ${{ vars.CLUSTER_NAME }}
+                namespace: ${{ github.event.repository.name }}
+                role_arn: "arn:aws:iam::${{ vars.AWS_ACCOUNT_NUMBER }}:role/${{ github.event.repository.name }}-${{ vars.ENV }}"
+                service_account_name: "application-permission"
+
+    helm-deploy:
+        name: K8s Deploy
+        runs-on: ["${{ github.event.repository.name }}", fiscal, linux, self-hosted, x64]
+        environment: ${{ github.ref_name }}
+        needs: [ create-service-account-role, generate-docker, helm-replacement ]
+        permissions:
+            id-token: write
+            contents: read
+        steps:
+
+            - uses: actions/checkout@v4
+              name: Checkout
+              with:
+                  ref: ${{ github.ref_name }}
+                  fetch-depth: 0
+
+            - name: configure
+              uses: orbitspot/actions/.github/actions/kubernetes-auth@v10
+              with:
+                  aws_account_number: ${{ vars.AWS_ACCOUNT_NUMBER }}
+                  aws_role_name: ${{ vars.AWS_ROLE_NAME }}
+                  aws_region: ${{ vars.CLUSTER_REGION }}
+                  cluster_name: ${{ vars.CLUSTER_NAME }}
+
+            - name: helm-apply
+              uses: orbitspot/actions/.github/actions/helm-deploy@v10
+              with:
+                  aws_account_number: ${{ vars.AWS_ACCOUNT_NUMBER }}
+                  aws_region: ${{ vars.CLUSTER_REGION }}
+                  namespace: ${{ github.event.repository.name }}
+                  helm_values: helm-values
+                  release: next
+                  chart_name: orbitspot/orbitspot-front-react-next
+                  chart_version: 0.1.0
+                  sets: |
+                      --set environment=${{ vars.ENV}} \
+                      --set region=${{ vars.AWS_REGION }} \
+                      --set 'containers[0].repository.image=${{ vars.AWS_ACCOUNT_NUMBER }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/${{ github.event.repository.name }}' \
+                      --set 'containers[0].repository.tag=${{ github.sha }}' \
+                      --set nodeSelector.nodegroup-type=${{ vars.NODE_SELECTOR }} \
+                      --set ingress.annotations.acm=${{ vars.ACM_ARN }} \
+                      --set ingress.rules[0].host=${{ vars.HOST_MF }} 
+
+

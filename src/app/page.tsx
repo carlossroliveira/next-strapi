@@ -1,14 +1,3 @@
-import dynamic from 'next/dynamic'
-import ServerWrapper from './ServerWrapper'
-
-const DynamicHeader = dynamic(() => import('./parts/Header'))
-
-const Home = () => {
-  return (
-    <ServerWrapper>
-      <DynamicHeader />
-    </ServerWrapper>
-  )
+export default function Home() {
+  return <h1>Hello World Home</h1>
 }
-
-export default Home

@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { Article } from '../types'
 import { useRouter } from 'next/navigation'
 import styled from '../../../../config/theme/styled-theme'
 
@@ -55,8 +56,10 @@ const BackButton = styled.button`
   }
 `
 
-export default function ArticleContent({ article }: { article: any }) {
+export default function ArticleContent({ article }: { article: Article }) {
   const router = useRouter()
+
+  const STRAPI_URL: string = 'http://127.0.0.1:4000'
 
   return (
     <ArticleContainer>
@@ -66,19 +69,25 @@ export default function ArticleContent({ article }: { article: any }) {
 
       {article.image && (
         <Image
-          height={200}
-          width={200}
-          src={'http://localhost:4000' + article.image.url}
+          width={400}
+          height={300}
+          style={{
+            width: '70%',
+            height: 'auto',
+            borderRadius: '50px',
+            marginBottom: '1rem'
+          }}
+          src={`${STRAPI_URL}${article?.image?.url}`}
           alt={article.image.alternativeText || article.title}
         />
       )}
 
       <div>
-        {article.content.map((block: any, index: number) => {
+        {article.content.map((block, index: number) => {
           if (block.type === 'paragraph') {
             return (
               <ContentBlock key={index}>
-                {block.children.map((child: any, i: number) => (
+                {block.children.map((child, i: number) => (
                   <span key={i}>{child.text}</span>
                 ))}
               </ContentBlock>

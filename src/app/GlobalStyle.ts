@@ -17,17 +17,6 @@ body {
   background-color: cadetblue;
 
 
-/*   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  grid-template-areas:
-    "header"
-    "benefits"
-    "flow"
-    "data"
-    "suite"
-    "contact"
-    "products"
-    "footer"
-; */
+
 }
 `

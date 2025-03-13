@@ -3,8 +3,8 @@ import Registry from './registry'
 import { Mulish } from 'next/font/google'
 
 export const metadata = {
-  title: 'Teste',
-  description: 'projeto Teste'
+  title: 'Strapi + Next',
+  description: 'Projeto Teste'
 }
 
 const mulish = Mulish({

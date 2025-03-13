@@ -1,1 +1,1 @@
-# landingpage-fiscal
+# Projeto utilizando Strapi - Consumindo API REST

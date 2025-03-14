@@ -1,12 +1,16 @@
 import axios from 'axios'
-import Posts from './posts/page'
+import { Article } from './posts/types'
+import PostsComponent from './posts/PostsComponent'
 
 export default async function Home() {
-  const response = await axios.get('http://127.0.0.1:4000/api/artigos', {
-    params: { populate: '*' }
-  })
+  const response = await axios.get<{ data: Article[] }>(
+    'http://127.0.0.1:4000/api/artigos',
+    {
+      params: { populate: '*' }
+    }
+  )
 
-  const articles = response.data.data
+  const articles: Article[] = response.data.data
 
-  return <Posts articles={articles} />
+  return <PostsComponent articles={articles} />
 }

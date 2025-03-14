@@ -79,7 +79,13 @@ const StyledLink = styled(Link)`
   }
 `
 
-export default function Posts({ articles }: { articles: Article[] }) {
+type PostsProps = {
+  articles: Article[]
+}
+
+export default function PostsComponent(props: PostsProps) {
+  const { articles } = props
+
   const STRAPI_URL: string = 'http://127.0.0.1:4000'
 
   return (

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { Article } from '../types'
 import ArticleContent from './ArticleContent'
 
 export default async function PageId({ params }: { params: { id: string } }) {
@@ -10,7 +11,7 @@ export default async function PageId({ params }: { params: { id: string } }) {
     params: { populate: '*' }
   })
 
-  const article = response.data.data
+  const article: Article = response?.data?.data
 
   return <ArticleContent article={article} />
 }
